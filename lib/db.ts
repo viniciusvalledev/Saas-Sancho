@@ -112,19 +112,6 @@ async function ensureTenantSlugColumn(models: DbModels) {
   }
 }
 
-async function ensureTenantBookingHotelIdColumn(models: DbModels) {
-  const queryInterface = models.sequelize.getQueryInterface();
-  const table = await queryInterface.describeTable('tenants');
-
-  if (!table.booking_hotel_id) {
-    await queryInterface.addColumn('tenants', 'booking_hotel_id', {
-      type: DataTypes.STRING(20),
-      allowNull: true,
-      comment: 'Property ID do Booking.com para integração',
-    });
-  }
-}
-
 async function ensureUserTeamColumns(models: DbModels) {
   const queryInterface = models.sequelize.getQueryInterface();
   const table = await queryInterface.describeTable('users');
@@ -242,7 +229,6 @@ export async function getDb(): Promise<DbModels> {
         await ensureReservationUnitNumberColumn(global.__sequelizeModels);
         await ensureReservationStayColumns(global.__sequelizeModels);
         await ensureTenantSlugColumn(global.__sequelizeModels);
-        await ensureTenantBookingHotelIdColumn(global.__sequelizeModels);
         await ensureUniqueIndexes(global.__sequelizeModels);
       }
 
