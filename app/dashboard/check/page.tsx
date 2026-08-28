@@ -3,6 +3,9 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ClipboardCheck, DoorOpen, Search, UserRoundPlus } from 'lucide-react';
+import { Pagination } from '@/components/pagination';
+
+const PAGE_SIZE = 8;
 
 type StayStatus = 'reserved' | 'checked_in' | 'checked_out';
 
@@ -132,6 +135,7 @@ export default function CheckPage() {
   const [stays, setStays] = useState<Stay[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | StayStatus>('all');
+  const [page, setPage] = useState(1);
   const [logs, setLogs] = useState<{ id: number; text: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -209,6 +213,21 @@ export default function CheckPage() {
       return matchesFilter && matchesSearch;
     });
   }, [filter, search, stays]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, search]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredStays.length / PAGE_SIZE));
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, pageCount));
+  }, [pageCount]);
+
+  const paginatedStays = useMemo(
+    () => filteredStays.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredStays, page],
+  );
 
   const totals = useMemo(() => {
     return {
@@ -346,8 +365,8 @@ export default function CheckPage() {
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_minmax(0,0.9fr)]">
         <article className="rounded-[28px] border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/20">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="relative w-full md:max-w-sm">
+          <div className="flex flex-col gap-4">
+            <div className="relative w-full">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
@@ -368,7 +387,7 @@ export default function CheckPage() {
                   type="button"
                   onClick={() => setFilter(item.value as 'all' | StayStatus)}
                   className={[
-                    'rounded-xl border px-3 py-2 text-sm transition',
+                    'whitespace-nowrap rounded-xl border px-3 py-2 text-sm transition',
                     filter === item.value
                       ? 'border-sky-300/40 bg-sky-500/10 text-sky-200'
                       : 'border-white/10 bg-slate-950/50 text-slate-300 hover:border-white/20',
@@ -398,8 +417,8 @@ export default function CheckPage() {
                         Carregando reservas do banco...
                       </td>
                     </tr>
-                  ) : filteredStays.length ? (
-                    filteredStays.map((stay) => (
+                  ) : paginatedStays.length ? (
+                    paginatedStays.map((stay) => (
                       <tr key={stay.id} className="transition-colors hover:bg-white/[0.03]">
                         <td className="px-4 py-3">
                           <p className="font-medium text-white">{stay.guestName}</p>
@@ -461,6 +480,13 @@ export default function CheckPage() {
                 </tbody>
               </table>
             </div>
+            <Pagination
+              page={page}
+              pageCount={pageCount}
+              totalItems={filteredStays.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+            />
           </div>
         </article>
 

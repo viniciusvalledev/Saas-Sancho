@@ -5,6 +5,7 @@ import { Clock3, Plus, ShieldCheck } from 'lucide-react';
 import type { DashboardFeatureKey } from '@/lib/dashboard-access';
 import { DEFAULT_STAFF_FEATURES } from '@/lib/dashboard-access';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { Pagination } from '@/components/pagination';
 import {
   TEAM_PERMISSION_OPTIONS,
   TEAM_ROLE_OPTIONS,
@@ -37,6 +38,8 @@ type TeamResponse = {
 };
 
 
+const PAGE_SIZE = 6;
+
 function formatDateTime(value?: string) {
   if (!value) {
     return '-';
@@ -59,6 +62,7 @@ export default function TeamPage() {
   const [savingPermissionsFor, setSavingPermissionsFor] = useState<number | null>(null);
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<'Todos' | TeamRole>('Todos');
+  const [page, setPage] = useState(1);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -116,6 +120,21 @@ export default function TeamPage() {
       return matchesRole && matchesSearch;
     });
   }, [roleFilter, search, team]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [roleFilter, search]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredTeam.length / PAGE_SIZE));
+
+  useEffect(() => {
+    setPage((prev) => Math.min(prev, pageCount));
+  }, [pageCount]);
+
+  const paginatedTeam = useMemo(
+    () => filteredTeam.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredTeam, page],
+  );
 
   const summary = useMemo(() => {
     return {
@@ -306,12 +325,12 @@ export default function TeamPage() {
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_minmax(0,0.9fr)]">
         <article className="rounded-[28px] border border-white/10 bg-slate-900/80 p-6 shadow-2xl shadow-slate-950/20">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-4">
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Buscar por nome, e-mail ou telefone"
-              className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2.5 text-sm text-white outline-none ring-sky-300 transition focus:ring md:max-w-sm"
+              className="w-full rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2.5 text-sm text-white outline-none ring-sky-300 transition focus:ring"
             />
             <div className="flex flex-wrap gap-2">
               {(['Todos', ...TEAM_ROLE_OPTIONS] as const).map((role) => (
@@ -320,7 +339,7 @@ export default function TeamPage() {
                   type="button"
                   onClick={() => setRoleFilter(role)}
                   className={[
-                    'rounded-xl border px-3 py-2 text-sm transition',
+                    'whitespace-nowrap rounded-xl border px-3 py-2 text-sm transition',
                     roleFilter === role
                       ? 'border-sky-300/40 bg-sky-500/10 text-sky-200'
                       : 'border-white/10 bg-slate-950/50 text-slate-300 hover:border-white/20',
@@ -334,7 +353,7 @@ export default function TeamPage() {
 
           <div className="mt-5 grid gap-3">
             {loading ? <p className="text-sm text-slate-400">Carregando equipe...</p> : null}
-            {filteredTeam.map((member) => (
+            {paginatedTeam.map((member) => (
               <div key={member.id} className="rounded-2xl border border-white/10 bg-slate-950/50 p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                   <div>
@@ -455,6 +474,15 @@ export default function TeamPage() {
 
             {!loading && filteredTeam.length === 0 ? <p className="text-sm text-slate-400">Nenhum colaborador encontrado.</p> : null}
           </div>
+
+          <Pagination
+            page={page}
+            pageCount={pageCount}
+            totalItems={filteredTeam.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+            className="-mx-6 mt-2 px-6"
+          />
         </article>
 
         <article className="space-y-6">
