@@ -3,8 +3,17 @@ export type RoomSeasonalRate = {
   startMonthDay: string;
   endMonthDay: string;
   price: number;
-  minStayNights?: number | null;
-  minStayDays?: number | null;
+};
+
+// Estadia mínima por período — independente da tarifa: uma pousada pode
+// exigir, por exemplo, 4 noites no Réveillon sem precisar mexer no preço
+// (ou vice-versa), daí ser uma lista separada de RoomSeasonalRate em vez de
+// um campo a mais dentro dela.
+export type RoomMinimumStayPeriod = {
+  label?: string;
+  startMonthDay: string;
+  endMonthDay: string;
+  minStayNights: number;
 };
 
 export type RoomClosurePeriod = {
@@ -18,6 +27,7 @@ export type RoomPolicySet = {
   minStayNights?: number | null;
   minStayDays?: number | null;
   seasonalRates?: RoomSeasonalRate[] | null;
+  minimumStayPeriods?: RoomMinimumStayPeriod[] | null;
   closurePeriods?: RoomClosurePeriod[] | null;
 };
 
@@ -131,24 +141,26 @@ function monthDayRangeLength(startMonthDay: string, endMonthDay: string): number
   return end >= start ? end - start : end + 365 - start;
 }
 
-function findRoomSeasonalRate<T extends { startMonthDay: string; endMonthDay: string }>(
-  seasonalRates: T[] | null | undefined,
+// Encontra, entre os períodos (por mês-dia) que cobrem a data informada, o
+// mais específico (intervalo mais curto) — em vez de depender da ordem de
+// cadastro, como "o primeiro que bater". Reaproveitado tanto pra tarifa
+// sazonal quanto pra estadia mínima por período, já que a regra de
+// correspondência é idêntica, só muda o que cada lista carrega.
+function findMostSpecificPeriod<T extends { startMonthDay: string; endMonthDay: string }>(
+  periods: T[] | null | undefined,
   checkIn: string | Date,
-) {
+): T | null {
   const monthDay = toMonthDay(checkIn);
-  if (!monthDay || !Array.isArray(seasonalRates)) {
+  if (!monthDay || !Array.isArray(periods)) {
     return null;
   }
 
-  const matches = seasonalRates.filter((rate) => monthDayIsWithinRange(monthDay, rate.startMonthDay, rate.endMonthDay));
+  const matches = periods.filter((period) => monthDayIsWithinRange(monthDay, period.startMonthDay, period.endMonthDay));
 
   if (matches.length === 0) {
     return null;
   }
 
-  // Quando mais de uma regra sazonal cobre a mesma data (períodos
-  // sobrepostos), a mais específica (intervalo mais curto) vence — em vez
-  // de depender da ordem de cadastro, como "a primeira que bater".
   return matches.reduce((mostSpecific, candidate) =>
     monthDayRangeLength(candidate.startMonthDay, candidate.endMonthDay) <
     monthDayRangeLength(mostSpecific.startMonthDay, mostSpecific.endMonthDay)
@@ -158,18 +170,15 @@ function findRoomSeasonalRate<T extends { startMonthDay: string; endMonthDay: st
 }
 
 export function getRoomMinimumStay(room: RoomPolicySet, checkIn: string | Date) {
-  const seasonalRate = findRoomSeasonalRate(room.seasonalRates ?? undefined, checkIn);
+  const minimumStayPeriod = findMostSpecificPeriod(room.minimumStayPeriods ?? undefined, checkIn);
 
   return {
     nights: Math.max(
       Number(room.minStayNights ?? 0),
-      Number(seasonalRate?.minStayNights ?? 0),
+      Number(minimumStayPeriod?.minStayNights ?? 0),
     ),
-    days: Math.max(
-      Number(room.minStayDays ?? 0),
-      Number(seasonalRate?.minStayDays ?? 0),
-    ),
-    seasonalRate,
+    days: Number(room.minStayDays ?? 0),
+    minimumStayPeriod,
   };
 }
 
@@ -178,7 +187,7 @@ export function getRoomEffectivePrice(room: { price: number; seasonalRates?: Roo
     return Number(room.price);
   }
 
-  const seasonalRate = findRoomSeasonalRate(room.seasonalRates ?? undefined, checkIn);
+  const seasonalRate = findMostSpecificPeriod(room.seasonalRates ?? undefined, checkIn);
   return seasonalRate ? Number(seasonalRate.price) : Number(room.price);
 }
 

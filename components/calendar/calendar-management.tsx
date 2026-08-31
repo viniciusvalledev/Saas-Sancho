@@ -5,7 +5,7 @@ import { CalendarDays, Lock, LockOpen, RefreshCw, Tag, Trash2 } from "lucide-rea
 import { useToast } from "@/components/toast-provider";
 import { addDays, cn, formatCurrencyInput, parseCurrencyInput } from "@/lib/utils";
 import { getRoomEffectivePrice } from "@/lib/room-policies";
-import type { Reservation, Room, RoomSeasonalRate } from "@/types/domain";
+import type { Reservation, Room, RoomMinimumStayPeriod, RoomSeasonalRate } from "@/types/domain";
 
 function toDateInputValue(date: Date) {
   const year = date.getFullYear();
@@ -121,6 +121,14 @@ export function CalendarManagement() {
   const [seasonalRatesDraft, setSeasonalRatesDraft] = useState<RoomSeasonalRate[]>(
     [],
   );
+  const [minStayStart, setMinStayStart] = useState(toDateInputValue(addDays(today, 1)));
+  const [minStayEnd, setMinStayEnd] = useState(toDateInputValue(addDays(today, 7)));
+  const [minStayNightsValue, setMinStayNightsValue] = useState("");
+  const [minStayLabel, setMinStayLabel] = useState("");
+  const [savingMinimumStay, setSavingMinimumStay] = useState(false);
+  const [minimumStayPeriodsDraft, setMinimumStayPeriodsDraft] = useState<RoomMinimumStayPeriod[]>(
+    [],
+  );
 
   async function loadData() {
     setLoading(true);
@@ -171,6 +179,9 @@ export function CalendarManagement() {
       setNewPrice(formatCurrencyInput(String(Math.round(selectedRoom.price * 100))));
       setSeasonalRatesDraft(
         Array.isArray(selectedRoom.seasonalRates) ? selectedRoom.seasonalRates : [],
+      );
+      setMinimumStayPeriodsDraft(
+        Array.isArray(selectedRoom.minimumStayPeriods) ? selectedRoom.minimumStayPeriods : [],
       );
       setBlockUnit("");
     }
@@ -317,6 +328,118 @@ export function CalendarManagement() {
           !(item.startMonthDay === startMonthDay && item.endMonthDay === endMonthDay),
       ),
     );
+  }
+
+  const minimumStayPeriodsSorted = useMemo(
+    () =>
+      [...minimumStayPeriodsDraft].sort((a, b) => {
+        if (a.startMonthDay === b.startMonthDay) {
+          return a.endMonthDay.localeCompare(b.endMonthDay);
+        }
+
+        return a.startMonthDay.localeCompare(b.startMonthDay);
+      }),
+    [minimumStayPeriodsDraft],
+  );
+
+  function handleApplyMinStayPreset(preset: (typeof WEEK_PRESETS)[number]) {
+    const startDate = getNextYearOccurrence(preset.startMonthDay, today);
+    const startYear = Number(startDate.slice(0, 4));
+    const endYear = preset.endNextYear ? startYear + 1 : startYear;
+    setMinStayStart(startDate);
+    setMinStayEnd(`${endYear}-${preset.endMonthDay}`);
+    setMinStayLabel(preset.label);
+  }
+
+  function handleAddMinimumStayRule() {
+    if (!selectedRoomId) {
+      showToast("Selecione um quarto para configurar estadia mínima.");
+      return;
+    }
+
+    if (!minStayStart || !minStayEnd || minStayEnd < minStayStart) {
+      showToast("Período de estadia mínima inválido.");
+      return;
+    }
+
+    const nights = Number(minStayNightsValue);
+    if (!Number.isInteger(nights) || nights < 1) {
+      showToast("Informe um número de noites válido (mínimo 1).");
+      return;
+    }
+
+    const startMonthDay = toMonthDay(minStayStart);
+    const endMonthDay = toMonthDay(minStayEnd);
+
+    if (!startMonthDay || !endMonthDay) {
+      showToast("Datas da regra inválidas.");
+      return;
+    }
+
+    const nextRule: RoomMinimumStayPeriod = {
+      label: minStayLabel.trim() || undefined,
+      startMonthDay,
+      endMonthDay,
+      minStayNights: nights,
+    };
+
+    setMinimumStayPeriodsDraft((current) => {
+      const withoutSameRange = current.filter(
+        (item) =>
+          !(
+            item.startMonthDay === nextRule.startMonthDay &&
+            item.endMonthDay === nextRule.endMonthDay
+          ),
+      );
+      return [...withoutSameRange, nextRule];
+    });
+
+    setMinStayNightsValue("");
+    setMinStayLabel("");
+    showToast("Regra de estadia mínima adicionada. Clique em salvar para persistir.");
+  }
+
+  function handleRemoveMinimumStayRule(startMonthDay: string, endMonthDay: string) {
+    setMinimumStayPeriodsDraft((current) =>
+      current.filter(
+        (item) =>
+          !(item.startMonthDay === startMonthDay && item.endMonthDay === endMonthDay),
+      ),
+    );
+  }
+
+  async function handleSaveMinimumStayRules() {
+    if (!selectedRoomId) {
+      showToast("Selecione um quarto para salvar as regras de estadia mínima.");
+      return;
+    }
+
+    setSavingMinimumStay(true);
+    try {
+      const response = await fetch(`/api/tenant/rooms/${selectedRoomId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minimumStayPeriods: minimumStayPeriodsDraft }),
+      });
+
+      const payload = (await response.json()) as { error?: string; message?: string };
+      if (!response.ok) {
+        throw new Error(
+          payload.error ?? payload.message ?? "Falha ao salvar estadia mínima por período.",
+        );
+      }
+
+      showToast("Estadia mínima por período salva com sucesso.");
+      await loadData();
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Erro ao salvar regras de estadia mínima.",
+      );
+    } finally {
+      setSavingMinimumStay(false);
+    }
   }
 
   function handleApplyWeekPreset(preset: (typeof WEEK_PRESETS)[number]) {
@@ -908,7 +1031,7 @@ export function CalendarManagement() {
         </button>
 
         <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
-          Use os atalhos acima para preencher semanas de feriado automaticamente. Rótulo é opcional.
+          Use os atalhos acima para preencher semanas de feriado automaticamente. Rótulo é opcional. Para exigir um número mínimo de noites (ex.: 4 no Réveillon), use a seção "Estadia mínima por período" abaixo.
         </p>
       </section>
 
@@ -1021,6 +1144,141 @@ export function CalendarManagement() {
                   <button
                     onClick={() =>
                       handleRemoveRateRule(rule.startMonthDay, rule.endMonthDay)
+                    }
+                    className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/20"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remover
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-slate-200/70 bg-white/80 p-5 shadow-xl shadow-slate-200/40 backdrop-blur dark:border-white/10 dark:bg-slate-900/70 dark:shadow-slate-950/30">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Estadia mínima por período</h3>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Exige um número mínimo de noites nesse período, independente da tarifa. Ex.: 4 noites no Réveillon.
+            </p>
+          </div>
+          <button
+            onClick={() => void handleSaveMinimumStayRules()}
+            disabled={savingMinimumStay || !selectedRoomId}
+            className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/20"
+          >
+            <Tag className="h-4 w-4" />
+            {savingMinimumStay ? "Salvando..." : "Salvar estadia mínima"}
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {WEEK_PRESETS.map((preset) => (
+            <button
+              key={preset.label}
+              onClick={() => handleApplyMinStayPreset(preset)}
+              className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200 dark:hover:bg-amber-500/20"
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <label className="space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              Início
+            </span>
+            <input
+              type="date"
+              value={minStayStart}
+              onChange={(event) => setMinStayStart(event.target.value)}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none ring-amber-200 transition focus:ring dark:border-white/15 dark:bg-slate-800 dark:text-slate-100"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              Fim
+            </span>
+            <input
+              type="date"
+              value={minStayEnd}
+              onChange={(event) => setMinStayEnd(event.target.value)}
+              min={minStayStart}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none ring-amber-200 transition focus:ring dark:border-white/15 dark:bg-slate-800 dark:text-slate-100"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              Mín. noites
+            </span>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={minStayNightsValue}
+              onChange={(event) => setMinStayNightsValue(event.target.value)}
+              placeholder="Ex.: 4"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none ring-amber-200 transition focus:ring dark:border-white/15 dark:bg-slate-800 dark:text-slate-100"
+            />
+          </label>
+
+          <label className="space-y-2 md:col-span-2 xl:col-span-1">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              Rótulo (opcional)
+            </span>
+            <input
+              type="text"
+              value={minStayLabel}
+              onChange={(event) => setMinStayLabel(event.target.value)}
+              placeholder="Ex.: Réveillon"
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none ring-amber-200 transition focus:ring dark:border-white/15 dark:bg-slate-800 dark:text-slate-100"
+            />
+          </label>
+
+          <div className="flex items-end">
+            <button
+              onClick={handleAddMinimumStayRule}
+              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/15 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+            >
+              Adicionar regra
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          {minimumStayPeriodsSorted.length === 0 ? (
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Nenhuma regra de estadia mínima criada para este quarto.
+            </p>
+          ) : (
+            minimumStayPeriodsSorted.map((rule) => {
+              const isSingleDay = rule.startMonthDay === rule.endMonthDay;
+
+              return (
+                <div
+                  key={`${rule.startMonthDay}-${rule.endMonthDay}`}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-white/10 dark:bg-slate-800/50"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {isSingleDay
+                        ? `Dia ${rule.startMonthDay}`
+                        : `Período ${rule.startMonthDay} até ${rule.endMonthDay}`}
+                    </p>
+                    <p className="text-xs text-slate-600 dark:text-slate-300">
+                      {rule.label ? `${rule.label} • ` : ""}Mínimo de {rule.minStayNights} noite(s)
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() =>
+                      handleRemoveMinimumStayRule(rule.startMonthDay, rule.endMonthDay)
                     }
                     className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/20"
                   >

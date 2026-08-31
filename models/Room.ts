@@ -9,6 +9,7 @@ export type RoomAttributes = {
   minStayNights?: number | null;
   minStayDays?: number | null;
   seasonalRates?: string | null;
+  minimumStayPeriods?: string | null;
   closurePeriods?: string | null;
   quantity: number;
   maxGuests: number;
@@ -38,6 +39,7 @@ export class Room
   declare minStayNights: number | null;
   declare minStayDays: number | null;
   declare seasonalRates: string | null;
+  declare minimumStayPeriods: string | null;
   declare closurePeriods: string | null;
   declare quantity: number;
   declare maxGuests: number;
@@ -99,6 +101,13 @@ export class Room
           defaultValue: null,
           field: "seasonal_rates",
           comment: "JSON array com períodos e preços sazonais",
+        },
+        minimumStayPeriods: {
+          type: DataTypes.TEXT,
+          allowNull: true,
+          defaultValue: null,
+          field: "minimum_stay_periods",
+          comment: "JSON array com períodos e estadia mínima (independente do preço)",
         },
         closurePeriods: {
           type: DataTypes.TEXT,

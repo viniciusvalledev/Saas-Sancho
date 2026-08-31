@@ -9,6 +9,7 @@ import {
   getRoomMinimumStay,
   parseRoomPolicyArray,
   type RoomClosurePeriod,
+  type RoomMinimumStayPeriod,
   type RoomSeasonalRate,
 } from "@/lib/room-policies";
 
@@ -60,12 +61,25 @@ function parseSeasonalRates(input: unknown): RoomSeasonalRate[] {
       startMonthDay,
       endMonthDay,
       price,
-      minStayNights: Number.isFinite(Number(item.minStayNights ?? item.min_stay_nights))
-        ? Number(item.minStayNights ?? item.min_stay_nights)
-        : null,
-      minStayDays: Number.isFinite(Number(item.minStayDays ?? item.min_stay_days))
-        ? Number(item.minStayDays ?? item.min_stay_days)
-        : null,
+    };
+  });
+}
+
+function parseMinimumStayPeriods(input: unknown): RoomMinimumStayPeriod[] {
+  return parseRoomPolicyArray(input, (item) => {
+    const startMonthDay = String(item.startMonthDay ?? item.start_month_day ?? "").trim();
+    const endMonthDay = String(item.endMonthDay ?? item.end_month_day ?? "").trim();
+    const minStayNights = Number(item.minStayNights ?? item.min_stay_nights);
+
+    if (!startMonthDay || !endMonthDay || !Number.isInteger(minStayNights) || minStayNights < 1) {
+      return null;
+    }
+
+    return {
+      label: String(item.label ?? "").trim() || undefined,
+      startMonthDay,
+      endMonthDay,
+      minStayNights,
     };
   });
 }
@@ -108,6 +122,7 @@ function mapRoom(
   const amenitiesList = parseJsonArray(room.amenities);
   const photoUrls = parseJsonArray(room.photoUrls).map(toPublicUploadUrl);
   const seasonalRates = parseSeasonalRates(room.seasonalRates);
+  const minimumStayPeriods = parseMinimumStayPeriods(room.minimumStayPeriods);
   const closurePeriods = parseClosurePeriods(room.closurePeriods);
   const beds = parseRoomBeds(room.beds);
 
@@ -121,6 +136,7 @@ function mapRoom(
     minStayNights: room.minStayNights ?? null,
     minStayDays: room.minStayDays ?? null,
     seasonalRates,
+    minimumStayPeriods,
     closurePeriods,
     beds,
     quantity: room.quantity,
@@ -281,6 +297,7 @@ export async function updateReservation(
         minStayNights: room.minStayNights,
         minStayDays: room.minStayDays,
         seasonalRates: parseSeasonalRates(room.seasonalRates),
+        minimumStayPeriods: parseMinimumStayPeriods(room.minimumStayPeriods),
         closurePeriods: parseClosurePeriods(room.closurePeriods),
       };
 

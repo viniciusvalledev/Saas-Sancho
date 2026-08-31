@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 import { getVerifiedTenantSession, hasFeatureAccess } from "@/lib/tenant-session";
 import { getRooms } from "@/services/tenantService";
 import { toPublicUploadUrl } from "@/lib/uploads";
-import { parseRoomPolicyArray, parseMaybeNumber, type RoomClosurePeriod, type RoomSeasonalRate } from "@/lib/room-policies";
+import { parseRoomPolicyArray, parseMaybeNumber, type RoomClosurePeriod, type RoomMinimumStayPeriod, type RoomSeasonalRate } from "@/lib/room-policies";
 import { BED_TYPES, type BedType, type RoomBed } from "@/types/domain";
 
 function sanitizeStringArray(input: unknown) {
@@ -61,8 +61,25 @@ function sanitizeSeasonalRates(input: unknown): RoomSeasonalRate[] {
       startMonthDay,
       endMonthDay,
       price,
-      minStayNights: parseMaybeNumber(item.minStayNights ?? item.min_stay_nights),
-      minStayDays: parseMaybeNumber(item.minStayDays ?? item.min_stay_days),
+    };
+  });
+}
+
+function sanitizeMinimumStayPeriods(input: unknown): RoomMinimumStayPeriod[] {
+  return parseRoomPolicyArray(input, (item) => {
+    const startMonthDay = String(item.startMonthDay ?? item.start_month_day ?? "").trim();
+    const endMonthDay = String(item.endMonthDay ?? item.end_month_day ?? "").trim();
+    const minStayNights = Number(item.minStayNights ?? item.min_stay_nights);
+
+    if (!startMonthDay || !endMonthDay || !Number.isInteger(minStayNights) || minStayNights < 1) {
+      return null;
+    }
+
+    return {
+      label: String(item.label ?? "").trim() || undefined,
+      startMonthDay,
+      endMonthDay,
+      minStayNights,
     };
   });
 }
@@ -149,6 +166,7 @@ export async function POST(request: Request) {
     const amenities = sanitizeStringArray(body.amenities);
     const photoUrls = sanitizeStringArray(body.photoUrls);
     const seasonalRates = sanitizeSeasonalRates(body.seasonalRates);
+    const minimumStayPeriods = sanitizeMinimumStayPeriods(body.minimumStayPeriods);
     const closurePeriods = sanitizeClosurePeriods(body.closurePeriods);
     const beds = sanitizeBeds(body.beds);
 
@@ -197,6 +215,7 @@ export async function POST(request: Request) {
       amenities: amenities.length > 0 ? JSON.stringify(amenities) : null,
       photoUrls: photoUrls.length > 0 ? JSON.stringify(photoUrls) : null,
       seasonalRates: seasonalRates.length > 0 ? JSON.stringify(seasonalRates) : null,
+      minimumStayPeriods: minimumStayPeriods.length > 0 ? JSON.stringify(minimumStayPeriods) : null,
       closurePeriods: closurePeriods.length > 0 ? JSON.stringify(closurePeriods) : null,
       beds: beds.length > 0 ? JSON.stringify(beds) : null,
     });
@@ -215,6 +234,7 @@ export async function POST(request: Request) {
         amenities: amenities,
         photoUrls: photoUrls.map(toPublicUploadUrl),
         seasonalRates,
+        minimumStayPeriods,
         closurePeriods,
         beds,
       },

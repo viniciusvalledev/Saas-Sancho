@@ -144,6 +144,7 @@ async function createReservationWithRules(input: ReservationCreationContext): Pr
       minStayNights: room.minStayNights,
       minStayDays: room.minStayDays,
       seasonalRates: parseStoredPolicyArray(room.seasonalRates),
+      minimumStayPeriods: parseStoredPolicyArray(room.minimumStayPeriods),
       closurePeriods: parseStoredPolicyArray(room.closurePeriods),
     };
 

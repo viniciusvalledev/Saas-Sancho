@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getVerifiedTenantSession, hasFeatureAccess } from "@/lib/tenant-session";
-import { parseMaybeNumber, parseRoomPolicyArray, type RoomClosurePeriod, type RoomSeasonalRate } from "@/lib/room-policies";
+import { parseMaybeNumber, parseRoomPolicyArray, type RoomClosurePeriod, type RoomMinimumStayPeriod, type RoomSeasonalRate } from "@/lib/room-policies";
 import { toPublicUploadUrl } from "@/lib/uploads";
 import { BED_TYPES, type BedType, type RoomBed } from "@/types/domain";
 
@@ -60,8 +60,25 @@ function sanitizeSeasonalRates(input: unknown): RoomSeasonalRate[] {
       startMonthDay,
       endMonthDay,
       price,
-      minStayNights: parseMaybeNumber(item.minStayNights ?? item.min_stay_nights),
-      minStayDays: parseMaybeNumber(item.minStayDays ?? item.min_stay_days),
+    };
+  });
+}
+
+function sanitizeMinimumStayPeriods(input: unknown): RoomMinimumStayPeriod[] {
+  return parseRoomPolicyArray(input, (item) => {
+    const startMonthDay = String(item.startMonthDay ?? item.start_month_day ?? "").trim();
+    const endMonthDay = String(item.endMonthDay ?? item.end_month_day ?? "").trim();
+    const minStayNights = Number(item.minStayNights ?? item.min_stay_nights);
+
+    if (!startMonthDay || !endMonthDay || !Number.isInteger(minStayNights) || minStayNights < 1) {
+      return null;
+    }
+
+    return {
+      label: String(item.label ?? "").trim() || undefined,
+      startMonthDay,
+      endMonthDay,
+      minStayNights,
     };
   });
 }
@@ -218,6 +235,11 @@ export async function PATCH(
       updates.seasonalRates = seasonalRates.length > 0 ? JSON.stringify(seasonalRates) : null;
     }
 
+    if (body.minimumStayPeriods !== undefined) {
+      const minimumStayPeriods = sanitizeMinimumStayPeriods(body.minimumStayPeriods);
+      updates.minimumStayPeriods = minimumStayPeriods.length > 0 ? JSON.stringify(minimumStayPeriods) : null;
+    }
+
     if (body.closurePeriods !== undefined) {
       const closurePeriods = sanitizeClosurePeriods(body.closurePeriods);
       updates.closurePeriods = closurePeriods.length > 0 ? JSON.stringify(closurePeriods) : null;
@@ -249,6 +271,7 @@ export async function PATCH(
         amenitiesList: parseStringArray(room.amenities),
         photoUrls: parseStringArray(room.photoUrls).map(toPublicUploadUrl),
         seasonalRates: parseStoredPolicyArray<RoomSeasonalRate>(room.seasonalRates),
+        minimumStayPeriods: parseStoredPolicyArray<RoomMinimumStayPeriod>(room.minimumStayPeriods),
         closurePeriods: parseStoredPolicyArray<RoomClosurePeriod>(room.closurePeriods),
         beds: parseStoredPolicyArray<RoomBed>(room.beds),
       },

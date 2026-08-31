@@ -1,5 +1,5 @@
-export type { RoomSeasonalRate } from '@/lib/room-policies';
-import type { RoomClosurePeriod, RoomSeasonalRate } from '@/lib/room-policies';
+export type { RoomSeasonalRate, RoomMinimumStayPeriod } from '@/lib/room-policies';
+import type { RoomClosurePeriod, RoomMinimumStayPeriod, RoomSeasonalRate } from '@/lib/room-policies';
 
 export type OtaSource = 'booking' | 'expedia' | 'hotels_com' | 'manual';
 
@@ -29,6 +29,7 @@ export type Room = {
   minStayNights?: number | null;
   minStayDays?: number | null;
   seasonalRates?: RoomSeasonalRate[];
+  minimumStayPeriods?: RoomMinimumStayPeriod[];
   closurePeriods?: RoomClosurePeriod[];
   quantity: number;
   status: 'active' | 'maintenance';
