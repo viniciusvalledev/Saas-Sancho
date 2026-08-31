@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
 import { ToastProvider } from '@/components/toast-provider';
