@@ -1,12 +1,16 @@
-import type { Metadata, Viewport } from 'next';
+import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
 import { ToastProvider } from '@/components/toast-provider';
 import { ThemeToggle } from '@/components/theme-toggle';
 
 export const metadata: Metadata = {
-  title: 'Pousada Sancho | Channel Manager',
-  description: 'MVP de channel manager para prevenção de overbooking em pousadas.',
+  title: "Pousada Viva-mar | Gestão",
+  description: "Canal de Gestão Interna Viva-Mar.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+  },
 };
 
 // Sem isso, o navegador do celular renderiza a página numa largura virtual
@@ -18,10 +22,12 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   // Precisa do mesmo nonce que o middleware colocou no header CSP — sem
   // isso, este script inline é bloqueado pela política 'strict-dynamic'.
-  const nonce = (await headers()).get('x-nonce') ?? undefined;
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   return (
     <html lang="pt-BR" className="light" suppressHydrationWarning>
