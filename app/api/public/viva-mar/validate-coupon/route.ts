@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { resolvePublicTenantId } from "@/lib/public-tenant";
+import { isCouponValidForCheckIn } from "@/lib/coupon-policies";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { code } = body;
+    const { code, checkIn } = body;
 
     if (typeof code !== "string" || !code.trim()) {
       return NextResponse.json({ error: "Informe o código do cupom." }, { status: 400 });
@@ -45,6 +46,20 @@ export async function POST(request: Request) {
     if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
       return NextResponse.json(
         { error: "Este cupom já atingiu o limite de uso." },
+        { status: 400 },
+      );
+    }
+
+    // O período de validade é sobre a data da RESERVA (check-in), não sobre
+    // quando o cupom é digitado — um cupom de setembro não vale pra uma
+    // reserva de Réveillon fechada em setembro.
+    if (
+      typeof checkIn === "string" &&
+      checkIn &&
+      !isCouponValidForCheckIn(coupon, checkIn)
+    ) {
+      return NextResponse.json(
+        { error: "Este cupom não é válido para as datas da reserva selecionadas." },
         { status: 400 },
       );
     }

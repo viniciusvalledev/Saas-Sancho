@@ -11,6 +11,7 @@ import {
   getRoomMinimumStay,
   type RoomSeasonalRate,
 } from '@/lib/room-policies';
+import { isCouponValidForCheckIn } from '@/lib/coupon-policies';
 
 type ManualReservationInput = {
   roomId: string;
@@ -232,6 +233,15 @@ async function createReservationWithRules(input: ReservationCreationContext): Pr
 
         if (coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit) {
           throw new Error('Este cupom já atingiu o limite de uso.');
+        }
+
+        // Ponto de aplicação final e não contornável: mesmo que a validação
+        // no checkout tenha passado (ou tenha sido pulada), a reserva só é
+        // criada com desconto se o check-in cair dentro do período do
+        // cupom — um cupom de setembro nunca desconta uma reserva de
+        // Réveillon, independente do que o cliente mandou no checkout.
+        if (!isCouponValidForCheckIn(coupon, checkIn)) {
+          throw new Error('Este cupom não é válido para as datas desta reserva.');
         }
 
         computedAmount = computedAmount * (1 - Number(coupon.discountPercentage) / 100);

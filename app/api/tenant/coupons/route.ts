@@ -63,6 +63,24 @@ export async function POST(request: Request) {
       usageLimit = parsedLimit;
     }
 
+    const validFrom = body.validFrom ? String(body.validFrom).trim().slice(0, 10) : null;
+    const validUntil = body.validUntil ? String(body.validUntil).trim().slice(0, 10) : null;
+
+    if (validFrom && Number.isNaN(new Date(validFrom).getTime())) {
+      return NextResponse.json({ error: "Data de início inválida." }, { status: 400 });
+    }
+
+    if (validUntil && Number.isNaN(new Date(validUntil).getTime())) {
+      return NextResponse.json({ error: "Data de término inválida." }, { status: 400 });
+    }
+
+    if (validFrom && validUntil && validUntil < validFrom) {
+      return NextResponse.json(
+        { error: "A data de término não pode ser antes da data de início." },
+        { status: 400 },
+      );
+    }
+
     // Verifica se o código já existe
     const existing = await Coupon.findOne({
       where: { tenantId: session.tenantId, code },
@@ -79,6 +97,8 @@ export async function POST(request: Request) {
       code,
       discountPercentage,
       usageLimit,
+      validFrom,
+      validUntil,
       status: "active",
       usedCount: 0,
     });

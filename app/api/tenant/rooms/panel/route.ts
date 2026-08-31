@@ -10,29 +10,40 @@ type OperationalStatus =
   | "maintenance"
   | "occupied";
 
+type UnitReservation = {
+  checkIn: string;
+  checkOut: string;
+  status: string;
+  channexReservationId: string;
+};
+
 function computeRoomStatus(
   roomDbStatus: "active" | "maintenance",
-  reservationsToday: Array<{ checkIn: string; checkOut: string; status: string }>
-): OperationalStatus {
-  if (roomDbStatus === "maintenance") return "maintenance";
+  reservationsToday: UnitReservation[]
+): { status: OperationalStatus; blockingReservationId: string | null } {
+  if (roomDbStatus === "maintenance") {
+    return { status: "maintenance", blockingReservationId: null };
+  }
 
   const today = new Date().toISOString().slice(0, 10);
 
   const active = reservationsToday.filter((r) => r.status !== "cancelled");
 
   const blocked = active.find((r) => r.status === "blocked");
-  if (blocked) return "maintenance";
+  if (blocked) {
+    return { status: "maintenance", blockingReservationId: blocked.channexReservationId };
+  }
 
   const checkingOut = active.find((r) => r.checkOut === today);
-  if (checkingOut) return "cleaning";
+  if (checkingOut) return { status: "cleaning", blockingReservationId: null };
 
   const checkingIn = active.find((r) => r.checkIn === today);
-  if (checkingIn) return "awaiting_guest";
+  if (checkingIn) return { status: "awaiting_guest", blockingReservationId: null };
 
   const ongoing = active.find((r) => r.checkIn < today && r.checkOut > today);
-  if (ongoing) return "occupied";
+  if (ongoing) return { status: "occupied", blockingReservationId: null };
 
-  return "vacant";
+  return { status: "vacant", blockingReservationId: null };
 }
 
 function autoNote(status: OperationalStatus): string {
@@ -99,10 +110,7 @@ export async function GET() {
     // Agrupa reservas por unidade física (roomId_unitNumber). Reservas
     // antigas sem unitNumber (criadas antes desse controle existir) caem
     // por padrão na unidade 1 do quarto.
-    const reservationsByUnit = new Map<
-      string,
-      Array<{ checkIn: string; checkOut: string; status: string }>
-    >();
+    const reservationsByUnit = new Map<string, UnitReservation[]>();
     for (const r of reservationsToday) {
       const key = `${r.roomId}_${r.unitNumber ?? 1}`;
       const list = reservationsByUnit.get(key) ?? [];
@@ -110,6 +118,7 @@ export async function GET() {
         checkIn: typeof r.checkIn === "string" ? r.checkIn : new Date(r.checkIn).toISOString().slice(0, 10),
         checkOut: typeof r.checkOut === "string" ? r.checkOut : new Date(r.checkOut).toISOString().slice(0, 10),
         status: r.status,
+        channexReservationId: r.channexReservationId,
       });
       reservationsByUnit.set(key, list);
     }
@@ -118,7 +127,7 @@ export async function GET() {
     for (const room of rooms) {
       for (let unitNo = 1; unitNo <= room.quantity; unitNo++) {
         const unitReservations = reservationsByUnit.get(`${room.id}_${unitNo}`) ?? [];
-        const computedStatus = computeRoomStatus(room.status, unitReservations);
+        const { status: computedStatus, blockingReservationId } = computeRoomStatus(room.status, unitReservations);
 
         const overrideKey = `${room.id}_${unitNo}`;
         const override = overrideMap.get(overrideKey);
@@ -141,6 +150,12 @@ export async function GET() {
           status,
           updatedAt,
           note: autoNote(status),
+          // Presente só quando o "Manutenção" vem de um fechamento
+          // operacional real (reserva bloqueada) — nesse caso, trocar o
+          // status pelo seletor não adianta (a apuração real sempre
+          // prevalece sobre o override manual aqui), então o front usa
+          // isso pra oferecer "Reabrir quarto" em vez do seletor.
+          blockingReservationId,
         });
       }
     }

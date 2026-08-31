@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { headers } from 'next/headers';
 import './globals.css';
 import { ToastProvider } from '@/components/toast-provider';
@@ -7,6 +7,15 @@ import { ThemeToggle } from '@/components/theme-toggle';
 export const metadata: Metadata = {
   title: 'Pousada Sancho | Channel Manager',
   description: 'MVP de channel manager para prevenção de overbooking em pousadas.',
+};
+
+// Sem isso, o navegador do celular renderiza a página numa largura virtual
+// de desktop (~980px) e espreme tudo pra caber na tela — os breakpoints
+// responsivos do Tailwind (sm/md/lg) nem disparam certo nesse cenário,
+// porque o CSS enxerga uma viewport bem maior que a tela real.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -30,7 +39,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </head>
       <body suppressHydrationWarning>
         <ToastProvider>
-          <div className="fixed right-4 top-4 z-50 sm:right-6 sm:top-6">
+          {/* Fica embaixo à direita até "lg": a barra mobile do menu do
+              painel (POUSADA SANCHO + hambúrguer) ocupa o topo até esse
+              breakpoint, e o botão flutuante em cima dela ficava
+              sobrepondo/colando no hambúrguer. Do "lg" pra cima a sidebar
+              desktop não tem essa barra, então volta pro canto superior. */}
+          <div className="fixed bottom-4 right-4 z-50 lg:bottom-auto lg:right-6 lg:top-6">
             <ThemeToggle />
           </div>
           {children}

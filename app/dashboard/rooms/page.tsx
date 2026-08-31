@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef, type FormEvent } from 'react';
 
-import { BedDouble, Settings2, Plus, Trash2, CircleDollarSign, Save, X, Edit2 } from 'lucide-react';
+import { BedDouble, Settings2, Plus, Trash2, CircleDollarSign, Save, X, Edit2, LockOpen } from 'lucide-react';
 
 import { useToast } from '@/components/toast-provider';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -20,6 +20,10 @@ type RoomSnapshot = {
   status: RoomOperationalStatus;
   updatedAt: string;
   note: string;
+  // Só vem preenchido quando "Manutenção" é um fechamento operacional real
+  // (reserva bloqueada) — nesse caso o seletor de status não adianta (a
+  // apuração real sempre prevalece), então a UI oferece "Reabrir quarto".
+  blockingReservationId?: string | null;
 };
 
 type RoomData = {
@@ -523,6 +527,35 @@ export default function RoomsPage() {
     }
   }
 
+  const [reopeningUnitId, setReopeningUnitId] = useState<string | null>(null);
+
+  // Quando "Manutenção" vem de um fechamento operacional real (reserva
+  // bloqueada, ex.: criado em "Fechar quarto" no Calendário de gestão), o
+  // seletor de status não resolve — a apuração real sempre prevalece sobre
+  // o override manual. Só remover a reserva bloqueada libera a unidade.
+  async function reopenBlockedUnit(snapshotId: string, reservationId: string) {
+    setReopeningUnitId(snapshotId);
+    try {
+      const res = await fetch('/api/tenant/reservations', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reservationId }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || 'Falha ao reabrir o quarto');
+      }
+
+      showToast('Quarto reaberto com sucesso.');
+      await fetchSnapshots();
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Erro ao reabrir o quarto.');
+    } finally {
+      setReopeningUnitId(null);
+    }
+  }
+
   const handlePriceChange = (roomId: string, value: string) => {
     setEditingPrices((prev) => ({ ...prev, [roomId]: formatCurrencyInput(value) }));
   };
@@ -883,17 +916,31 @@ export default function RoomsPage() {
                     </option>
                   ))}
                 </select>
-                <select
-                  value={selectedSnapshot.status}
-                  onChange={(e) => updateStatus(selectedSnapshot.id, e.target.value as RoomOperationalStatus)}
-                  className="cursor-pointer rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-slate-200 outline-none ring-sky-300 transition focus:ring"
-                >
-                  <option value="vacant">Vaga</option>
-                  <option value="cleaning">Limpando</option>
-                  <option value="awaiting_guest">Esperando hóspede</option>
-                  <option value="maintenance">Manutenção</option>
-                  <option value="occupied">Ocupado</option>
-                </select>
+                {selectedSnapshot.blockingReservationId ? (
+                  <button
+                    onClick={() =>
+                      reopenBlockedUnit(selectedSnapshot.id, selectedSnapshot.blockingReservationId as string)
+                    }
+                    disabled={reopeningUnitId === selectedSnapshot.id}
+                    title="Remove o fechamento operacional que está travando esta unidade"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <LockOpen className="h-3.5 w-3.5" />
+                    {reopeningUnitId === selectedSnapshot.id ? 'Reabrindo...' : 'Reabrir quarto'}
+                  </button>
+                ) : (
+                  <select
+                    value={selectedSnapshot.status}
+                    onChange={(e) => updateStatus(selectedSnapshot.id, e.target.value as RoomOperationalStatus)}
+                    className="cursor-pointer rounded-xl border border-white/10 bg-slate-950/60 px-2 py-1 text-xs text-slate-200 outline-none ring-sky-300 transition focus:ring"
+                  >
+                    <option value="vacant">Vaga</option>
+                    <option value="cleaning">Limpando</option>
+                    <option value="awaiting_guest">Esperando hóspede</option>
+                    <option value="maintenance">Manutenção</option>
+                    <option value="occupied">Ocupado</option>
+                  </select>
+                )}
               </div>
             </div>
           </article>

@@ -6,6 +6,7 @@ import { useToast } from "@/components/toast-provider";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   BadgePercent,
+  Edit2,
   Plus,
   Power,
   PowerOff,
@@ -20,6 +21,14 @@ interface Coupon {
   status: "active" | "inactive";
   usageLimit: number | null;
   usedCount: number;
+  // Período de estadia (check-in) em que o cupom vale — não quando o
+  // cliente digita o código, e sim a data da reserva em si.
+  validFrom: string | null;
+  validUntil: string | null;
+}
+
+function formatDateOnlyBR(value: string) {
+  return new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR");
 }
 
 export default function PromotionsPage() {
@@ -30,12 +39,40 @@ export default function PromotionsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [couponToDelete, setCouponToDelete] = useState<number | null>(null);
   const [isDeletingCoupon, setIsDeletingCoupon] = useState(false);
-  const [isCreatingCoupon, setIsCreatingCoupon] = useState(false);
-  const [newCoupon, setNewCoupon] = useState({
+  const [isSavingCoupon, setIsSavingCoupon] = useState(false);
+  const [editingCouponId, setEditingCouponId] = useState<number | null>(null);
+  const emptyCouponForm = {
     code: "",
     discount: "",
     limit: "",
-  });
+    validFrom: "",
+    validUntil: "",
+  };
+  const [newCoupon, setNewCoupon] = useState(emptyCouponForm);
+
+  function openCreateModal() {
+    setEditingCouponId(null);
+    setNewCoupon(emptyCouponForm);
+    setIsModalOpen(true);
+  }
+
+  function openEditModal(coupon: Coupon) {
+    setEditingCouponId(coupon.id);
+    setNewCoupon({
+      code: coupon.code,
+      discount: String(coupon.discountPercentage),
+      limit: coupon.usageLimit ? String(coupon.usageLimit) : "",
+      validFrom: coupon.validFrom ? coupon.validFrom.slice(0, 10) : "",
+      validUntil: coupon.validUntil ? coupon.validUntil.slice(0, 10) : "",
+    });
+    setIsModalOpen(true);
+  }
+
+  function closeModal() {
+    setIsModalOpen(false);
+    setEditingCouponId(null);
+    setNewCoupon(emptyCouponForm);
+  }
 
   useEffect(() => {
     fetchData();
@@ -56,40 +93,51 @@ export default function PromotionsPage() {
   }
 
   // ===================== LÓGICA DE CUPONS =====================
-  const handleCreateCoupon = async (e: FormEvent) => {
+  const handleSubmitCoupon = async (e: FormEvent) => {
     e.preventDefault();
-    if (!newCoupon.code || !newCoupon.discount || isCreatingCoupon) {
+    if (!newCoupon.code || !newCoupon.discount || isSavingCoupon) {
       if (!newCoupon.code || !newCoupon.discount) {
         showToast("Preencha o código e o percentual de desconto.");
       }
       return;
     }
 
-    setIsCreatingCoupon(true);
+    if (newCoupon.validFrom && newCoupon.validUntil && newCoupon.validUntil < newCoupon.validFrom) {
+      showToast("A data de término não pode ser antes da data de início.");
+      return;
+    }
+
+    const isEditing = editingCouponId !== null;
+
+    setIsSavingCoupon(true);
     try {
-      const res = await fetch("/api/tenant/coupons", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: newCoupon.code,
-          discountPercentage: newCoupon.discount,
-          usageLimit: newCoupon.limit ? parseInt(newCoupon.limit) : null,
-        }),
-      });
+      const res = await fetch(
+        isEditing ? `/api/tenant/coupons/${editingCouponId}` : "/api/tenant/coupons",
+        {
+          method: isEditing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(isEditing ? {} : { code: newCoupon.code }),
+            discountPercentage: newCoupon.discount,
+            usageLimit: newCoupon.limit ? parseInt(newCoupon.limit) : null,
+            validFrom: newCoupon.validFrom || null,
+            validUntil: newCoupon.validUntil || null,
+          }),
+        },
+      );
 
       if (res.ok) {
-        setIsModalOpen(false);
-        setNewCoupon({ code: "", discount: "", limit: "" });
+        closeModal();
         fetchData();
-        showToast("Cupom criado com sucesso!");
+        showToast(isEditing ? "Cupom atualizado com sucesso!" : "Cupom criado com sucesso!");
       } else {
         const errorData = await res.json();
         showToast(`Erro: ${errorData.error}`);
       }
     } catch (error) {
-      showToast("Erro de conexão ao criar cupom.");
+      showToast(isEditing ? "Erro de conexão ao salvar cupom." : "Erro de conexão ao criar cupom.");
     } finally {
-      setIsCreatingCoupon(false);
+      setIsSavingCoupon(false);
     }
   };
 
@@ -178,7 +226,7 @@ export default function PromotionsPage() {
             </div>
           </div>
           <button
-            onClick={() => setIsModalOpen(true)}
+            onClick={openCreateModal}
             className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-500"
           >
             <Plus className="h-4 w-4" /> Novo
@@ -191,7 +239,10 @@ export default function PromotionsPage() {
               Nenhum cupom criado ainda.
             </p>
           ) : (
-            coupons.map((coupon) => (
+            coupons.map((coupon) => {
+              const isExhausted = coupon.usageLimit !== null && coupon.usedCount >= coupon.usageLimit;
+
+              return (
               <div
                 key={coupon.id}
                 className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-2xl border border-white/10 bg-slate-950/50 p-4 transition-all hover:border-white/20"
@@ -210,6 +261,14 @@ export default function PromotionsPage() {
                     >
                       {coupon.status === "active" ? "Ativo" : "Inativo"}
                     </span>
+                    {isExhausted && (
+                      <span
+                        title="Limite de uso atingido — parou de funcionar automaticamente, mesmo estando 'Ativo'."
+                        className="text-xs font-semibold text-rose-400 bg-rose-400/10 px-2 py-1 rounded-full border border-rose-400/20"
+                      >
+                        Esgotado
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-slate-400 mt-2">
                     <strong className="text-violet-300">
@@ -220,9 +279,22 @@ export default function PromotionsPage() {
                       ? `/ ${coupon.usageLimit}`
                       : "(Ilimitado)"}
                   </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Válido para reservas:{" "}
+                    {coupon.validFrom || coupon.validUntil
+                      ? `${coupon.validFrom ? formatDateOnlyBR(coupon.validFrom) : "qualquer data"} até ${coupon.validUntil ? formatDateOnlyBR(coupon.validUntil) : "qualquer data"}`
+                      : "qualquer período"}
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => openEditModal(coupon)}
+                    className="rounded-xl border border-white/10 bg-slate-900 p-2 text-sky-400 transition hover:bg-sky-400/10"
+                    title="Editar"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </button>
                   <button
                     onClick={() =>
                       toggleCouponStatus(coupon.id, coupon.status)
@@ -247,7 +319,8 @@ export default function PromotionsPage() {
                   </button>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
       </section>
@@ -270,21 +343,23 @@ export default function PromotionsPage() {
               <div className="flex justify-between items-center mb-6">
                 <div>
                   <h3 className="text-2xl font-semibold text-white">
-                    Criar Cupom
+                    {editingCouponId !== null ? "Editar Cupom" : "Criar Cupom"}
                   </h3>
                   <p className="text-sm text-slate-400 mt-1">
-                    Gere um novo código promocional.
+                    {editingCouponId !== null
+                      ? "Altere o desconto, limite de uso ou período de validade."
+                      : "Gere um novo código promocional."}
                   </p>
                 </div>
                 <button
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={closeModal}
                   className="text-slate-400 hover:text-white bg-slate-950/50 p-2 rounded-xl"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleCreateCoupon} className="space-y-4">
+              <form onSubmit={handleSubmitCoupon} className="space-y-4">
                 <label className="block">
                   <span className="text-sm font-medium text-slate-200">
                     Código do Cupom
@@ -292,6 +367,7 @@ export default function PromotionsPage() {
                   <input
                     type="text"
                     required
+                    disabled={editingCouponId !== null}
                     placeholder="Ex: VERAO2026"
                     value={newCoupon.code}
                     onChange={(e) =>
@@ -300,8 +376,13 @@ export default function PromotionsPage() {
                         code: e.target.value.toUpperCase(),
                       })
                     }
-                    className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white uppercase outline-none focus:border-violet-500"
+                    className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white uppercase outline-none focus:border-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
                   />
+                  {editingCouponId !== null && (
+                    <span className="mt-1 block text-xs text-slate-500">
+                      O código não pode ser alterado depois de criado.
+                    </span>
+                  )}
                 </label>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -339,18 +420,56 @@ export default function PromotionsPage() {
                   </label>
                 </div>
 
+                <div>
+                  <span className="text-sm font-medium text-slate-200">
+                    Período de estadia válido (opcional)
+                  </span>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Restringe o cupom pela data da reserva (check-in), não pela data em que o cliente usa o código. Ex.: um cupom de setembro não vale pra uma reserva de Réveillon. Deixe em branco para não restringir.
+                  </p>
+                  <div className="mt-2 grid grid-cols-2 gap-4">
+                    <label className="block">
+                      <span className="text-xs text-slate-400">Início</span>
+                      <input
+                        type="date"
+                        value={newCoupon.validFrom}
+                        onChange={(e) =>
+                          setNewCoupon({ ...newCoupon, validFrom: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-violet-500"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs text-slate-400">Fim</span>
+                      <input
+                        type="date"
+                        min={newCoupon.validFrom || undefined}
+                        value={newCoupon.validUntil}
+                        onChange={(e) =>
+                          setNewCoupon({ ...newCoupon, validUntil: e.target.value })
+                        }
+                        className="mt-1 w-full rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-white outline-none focus:border-violet-500"
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 <div className="flex gap-3 pt-4">
                   <button
                     type="submit"
-                    disabled={isCreatingCoupon}
+                    disabled={isSavingCoupon}
                     className="flex-1 rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isCreatingCoupon ? "Criando..." : "Criar Cupom"}
+                    {isSavingCoupon
+                      ? "Salvando..."
+                      : editingCouponId !== null
+                        ? "Salvar Alterações"
+                        : "Criar Cupom"}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    disabled={isCreatingCoupon}
+                    onClick={closeModal}
+                    disabled={isSavingCoupon}
                     className="flex-1 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Cancelar

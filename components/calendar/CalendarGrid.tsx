@@ -69,7 +69,7 @@ export function CalendarGrid({
             gridTemplateColumns: `260px repeat(${days.length}, minmax(96px, 1fr))`,
           }}
         >
-          <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-4 text-sm font-medium text-slate-300">
+          <div className="sticky left-0 z-10 rounded-2xl border border-white/10 bg-slate-950 px-4 py-4 text-sm font-medium text-slate-300">
             Acomodações
           </div>
           {days.map((day) => (
@@ -114,8 +114,10 @@ export function CalendarGrid({
 
           return (
             <div key={room.id} className="flex gap-3">
-              {/* Card do Quarto (Lado Esquerdo) */}
-              <div className="flex w-[260px] shrink-0 flex-col justify-center rounded-[24px] border border-white/10 bg-slate-950/60 p-4">
+              {/* Card do Quarto (Lado Esquerdo) — sticky pra continuar visível
+                  ao rolar a grade horizontalmente pra ver mais dias, senão
+                  perde-se de vista qual linha é qual quarto no celular. */}
+              <div className="sticky left-0 z-10 flex w-[260px] shrink-0 flex-col justify-center rounded-[24px] border border-white/10 bg-slate-950 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold text-white">{room.name}</p>

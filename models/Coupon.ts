@@ -8,11 +8,18 @@ export interface CouponAttributes {
   status: "active" | "inactive";
   usageLimit: number | null;
   usedCount: number;
+  // Período de estadia (check-in) em que o cupom vale — não é a data em que
+  // o cupom pode ser digitado, e sim a data da reserva em si. Um cupom
+  // lançado pra setembro não pode ser usado pra fechar uma reserva de
+  // Réveillon, mesmo se aplicado dentro do prazo. Nulo = sem restrição
+  // desse lado (aberto).
+  validFrom: string | null;
+  validUntil: string | null;
 }
 
 export type CouponCreationAttributes = Optional<
   CouponAttributes,
-  "id" | "status" | "usedCount" | "usageLimit"
+  "id" | "status" | "usedCount" | "usageLimit" | "validFrom" | "validUntil"
 >;
 
 export class Coupon
@@ -26,6 +33,8 @@ export class Coupon
   public status!: "active" | "inactive";
   public usageLimit!: number | null;
   public usedCount!: number;
+  public validFrom!: string | null;
+  public validUntil!: string | null;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -66,6 +75,18 @@ export class Coupon
           allowNull: false,
           defaultValue: 0,
           field: "used_count",
+        },
+        validFrom: {
+          type: DataTypes.DATEONLY,
+          allowNull: true,
+          defaultValue: null,
+          field: "valid_from",
+        },
+        validUntil: {
+          type: DataTypes.DATEONLY,
+          allowNull: true,
+          defaultValue: null,
+          field: "valid_until",
         },
       },
       {
